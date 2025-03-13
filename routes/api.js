@@ -118,10 +118,8 @@ module.exports = function (app) {
     const { thread_id, delete_password } = req.body;
     console.log(`Thread id is ${thread_id} and delete_password is ${delete_password}`);
     try {
-      // Test now, if it works
       const specificThread = await Thread.findById(thread_id);
       if (delete_password == specificThread.delete_password) {
-          // delete below and make more efficient
         console.log("Thread found. Here: ", JSON.stringify(specificThread))
         await Thread.findByIdAndDelete(thread_id); // delete the whole thread
         console.log("Success")
@@ -185,33 +183,31 @@ module.exports = function (app) {
     const { text, delete_password, thread_id} = req.body;
     console.log(`Text is ${text}, thread id is ${thread_id} and delete_password is ${delete_password}`);
     try {
-      // Update the thread with the new reply and update the bumped_on date
-        // Update the thread with the new reply and update the bumped_on date
-        await Thread.updateOne(
-          { _id: thread_id }, 
-          { 
-            $set: { bumped_on: new Date() }, 
-            $push: { 
-              replies: { 
-                _id: new mongoose.Types.ObjectId(), // This ensures a unique ID for the reply
-                text: text, 
-                delete_password: delete_password,
-                created_on: new Date() // Adding created_on to match your sort
-              } 
-            }
+      await Thread.updateOne(
+        { _id: thread_id }, 
+        { 
+          $set: { bumped_on: new Date() }, 
+          $push: { 
+            replies: { 
+              _id: new mongoose.Types.ObjectId(), // This ensures a unique ID for the reply
+              text: text, 
+              delete_password: delete_password,
+              created_on: new Date()
+            } 
           }
-        );
+        }
+      );
 
-        // Get the newly created reply
-        const postedReply = await Thread.findOne(
-          { _id: thread_id },
-          { replies: { $slice: -1 } } // Get only the last reply (most recently added)
-        );
+      // Get the newly created reply
+      const postedReply = await Thread.findOne(
+        { _id: thread_id },
+        { replies: { $slice: -1 } } // Get only the last reply (most recently added)
+      );
 
-        console.log(`Posted Reply is actually ${JSON.stringify(postedReply?.replies[0])}`);
+      console.log(`Posted Reply is actually ${JSON.stringify(postedReply?.replies[0])}`);
 
-        // Return just the reply object
-        return res.json(postedReply?.replies[0]);
+      // Return just the reply object
+      return res.json(postedReply?.replies[0]);
     } catch (error) {
       console.error("Error posting reply:", error);
       return res.status(500).json({ error: "Failed to post reply" });
@@ -243,7 +239,6 @@ module.exports = function (app) {
     const { thread_id, reply_id, delete_password } = req.body;
     console.log(`Thread id is ${thread_id}, delete_password is ${delete_password} and reply id is ${reply_id}`);
     try {
-      // TODO: Fix below
       const specificThread = await Thread.findById(thread_id);
       console.log(`Specific Thread looks like ${JSON.stringify(specificThread)}`)
       if ( !specificThread ) {
@@ -279,9 +274,7 @@ module.exports = function (app) {
     console.log(`Thread id is ${thread_id} and reply id is ${reply_id}`);
     try {
       const specificThread = await Thread.findById(thread_id);
-      // Also possible
       const specificReply = specificThread.replies.find(reply => reply._id.toString() === reply_id);
-      // const specificReply = specificThread.findById(reply_id);
       if (specificReply) {
         specificReply.reported = true; // change reported to true
         const answerThread = await specificThread.save();

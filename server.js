@@ -51,8 +51,6 @@ app.use(function(req, res, next) {
 
 const listener = app.listen(process.env.PORT || 3000, function () {
   console.log('Your app is listening on port ' + listener.address().port);
-  
-  // Wait for 8 seconds to successfully connect to mongodb
   setTimeout(function() {
     if (process.env.NODE_ENV === 'test') {
       console.log('Running Tests...');
@@ -63,9 +61,9 @@ const listener = app.listen(process.env.PORT || 3000, function () {
           console.log('Tests are not valid:');
           console.error(e);
         }
-      }, 3500); 
+      }, 1500); 
     }
-  },8000);
+  }, 3000); // Wait for 3 seconds to successfully connect to mongodb
 });
 
 module.exports = app; //for testing
