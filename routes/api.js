@@ -1,6 +1,5 @@
-
 'use strict';
-const { spec } = require('mocha/lib/reporters');
+
 // Mongodb + mongoose configuration
 const mongoose = require('mongoose');
 
@@ -37,12 +36,22 @@ mongoose.connect(process.env.MONGO_URI, {
   useUnifiedTopology: true
 })
 .then(() => console.log("MongoDB has connected succesfully"))
-.catch((err) => console.log(`Error encountered: ${err}`))
+.catch((err) => console.log(`Error connecting to mongodb: ${err}`))
 // Connection done!
 
 // App routing starts here
 module.exports = function (app) {
-  
+ /*
+  *
+  *
+  *
+  *
+  ENTERING THE /threads MINES
+  *
+  *
+  *
+  */ 
+ 
   app.route('/api/threads/:board')
   .post(async (req, res) => {
     console.log('===================================');
@@ -51,12 +60,11 @@ module.exports = function (app) {
     console.log(`Request body look like: ${JSON.stringify(req.body)}`);
     const { text, delete_password } = req.body;
     console.log(`Text is ${text} and delete_password is ${delete_password}`);
-    // Ni kujaribu tu
     try {
       const newThread = new Thread({text: text, created_on: new Date(), bumped_on: new Date(), reported: false, delete_password: delete_password, replies: []});
       const savedThread = await newThread.save();
       console.log(`To be returned thread looks like ${JSON.stringify(savedThread)}`);
-      // get rid of the _v0 and return _id
+      //TODO: get rid of the _v0 and return _id
       return res.json(savedThread);
     }
     catch( err ) {
@@ -71,7 +79,27 @@ module.exports = function (app) {
     console.log(`Request parameters look like: ${JSON.stringify(req.params)}`);
     console.log(`Request body look like: ${JSON.stringify(req.body)}`);
     try {
-      const result = await Thread.aggregate([{$sort: {_id: -1}}, {$limit: 10}, {$addFields: {replies: {$slice: ["$replies", -3]}}}]).exec();
+      const result = await Thread.aggregate([
+        { $sort: { _id: -1 } },
+        { $limit: 10 },
+        {
+          $addFields: {
+            replies: { $slice: ["$replies", -3] }
+          }
+        },
+        {
+          $project: {
+            _id: 0,
+            delete_password: 0,
+            __v: 0,
+            reported: 0,
+            "replies.delete_password": 0,
+            "replies.__v": 0,
+            "replies.reported": 0,
+            "replies._id": 0
+          }
+        }
+      ]).exec();      
       console.log(`The result looks like: ${JSON.stringify(result)}`);
       // reported and delete_password should NOT be sent to client
       res.json(result);
@@ -90,14 +118,17 @@ module.exports = function (app) {
     const { thread_id, delete_password } = req.body;
     console.log(`Thread id is ${thread_id} and delete_password is ${delete_password}`);
     try {
-      // Also possible
-      // const specificReply = specificThread.replies.find(reply => reply._id.toString() === reply_id);
-      // TODO: FIX HERE
-      if (delete_password == specificReply.delete_password) {
+      // Test now, if it works
+      const specificThread = await Thread.findById(thread_id);
+      if (delete_password == specificThread.delete_password) {
+          // delete below and make more efficient
+        console.log("Thread found. Here: ", JSON.stringify(specificThread))
         await Thread.findByIdAndDelete(thread_id); // delete the whole thread
-        return res.text("success");
+        console.log("Success")
+        return res.status(200).send("success");
       } else {
-        return res.text("Incorrect password");
+          console.log("incorrect password");
+          return res.status(401).send("incorrect password");
       }
     }
     catch( err ) {
@@ -115,13 +146,15 @@ module.exports = function (app) {
     console.log(`Thread id is ${thread_id}`);
     try {
       const specificThread = await Thread.findById(thread_id);
-      if (specificReply) {
+      if (specificThread) {
         specificThread.reported = true; // change reported to true
         const answerThread = await specificThread.save();
         console.log(`The whole answer thread looks like ${JSON.stringify(answerThread)}`);
-        return res.text("reported");
+        console.log("reported");
+        return res.send("reported");
       } else {
-        return res.text("Thread not found");
+        console.log("Thread not found");
+        return res.send("Thread not found");
       }
     }
     catch( err ) {
@@ -130,10 +163,19 @@ module.exports = function (app) {
       return res.status(500).json({error: "Error putting a thread"})
     }
   });
-    
 
-  // ENTERING THE REPLIES MINES
 
+  /*
+  *
+  *
+  *
+  *
+  ENTERING THE /replies MINES
+  *
+  *
+  *
+  */ 
+  
   app.route('/api/replies/:board')
   .post(async (req, res) => {
     console.log('===================================');
@@ -142,28 +184,39 @@ module.exports = function (app) {
     console.log(`Request body look like: ${JSON.stringify(req.body)}`);
     const { text, delete_password, thread_id} = req.body;
     console.log(`Text is ${text}, thread id is ${thread_id} and delete_password is ${delete_password}`);
-    // Ni kujaribu tu
     try {
-      const specificThread = await Thread.findById(thread_id);
-      // Find a way to change bumped date
-      specificThread.bumped_on = new Date();
-      // Just trying here
-      specificThread.replies.push({
-        text: text,
-        created_on: new Date(),
-        delete_password: delete_password,
-        reported: false,
-      });
-      //return the _id prop
-      const answerThread = await specificThread.save();
-      console.log(`The whole answer thread looks like ${JSON.stringify(answerThread)}`);
-      return res.json(answerThread);
-    }
-    catch( err ) {
-      console.log(`Error @ POST /api/replies/:board`);
-      console.error("Error", err);
-      return res.status(500).json({error: "Error adding a reply"})
-    }})
+      // Update the thread with the new reply and update the bumped_on date
+        // Update the thread with the new reply and update the bumped_on date
+        await Thread.updateOne(
+          { _id: thread_id }, 
+          { 
+            $set: { bumped_on: new Date() }, 
+            $push: { 
+              replies: { 
+                _id: new mongoose.Types.ObjectId(), // This ensures a unique ID for the reply
+                text: text, 
+                delete_password: delete_password,
+                created_on: new Date() // Adding created_on to match your sort
+              } 
+            }
+          }
+        );
+
+        // Get the newly created reply
+        const postedReply = await Thread.findOne(
+          { _id: thread_id },
+          { replies: { $slice: -1 } } // Get only the last reply (most recently added)
+        );
+
+        console.log(`Posted Reply is actually ${JSON.stringify(postedReply?.replies[0])}`);
+
+        // Return just the reply object
+        return res.json(postedReply?.replies[0]);
+    } catch (error) {
+      console.error("Error posting reply:", error);
+      return res.status(500).json({ error: "Failed to post reply" });
+    }  
+  })
   .get(async (req, res) => {
     console.log('===================================');
     console.log('@ GET /api/replies/:board');
@@ -172,12 +225,8 @@ module.exports = function (app) {
     const { thread_id } = req.query;
     console.log(`Thread_id looks like ${thread_id}`)
     try {
-      const result = await Thread.findById(thread_id);
+      const result = await Thread.findById(thread_id, {__v: 0, delete_password: 0, reported: 0});
       console.log(`The result looks like: ${JSON.stringify(result)}`);
-      // you should exclude some stuff here
-
-      // TODO: CONFIRM the below comment before continuing
-      // reported and delete_password should NOT be sent to client
       res.json(result);
     }
     catch ( err ) {
@@ -196,16 +245,23 @@ module.exports = function (app) {
     try {
       // TODO: Fix below
       const specificThread = await Thread.findById(thread_id);
-      // Also possible
-      // const specificReply = specificThread.replies.find(reply => reply._id.toString() === reply_id);
-      const specificReply = specificThread.findById(reply_id);
+      console.log(`Specific Thread looks like ${JSON.stringify(specificThread)}`)
+      if ( !specificThread ) {
+        console.log(`Error: specific thread not found`);
+      }
+      const specificReply = specificThread.replies.find(reply => reply._id.toString() == reply_id);
+      console.log(`Specific Reply looks like ${JSON.stringify(specificReply)}`)
+      if ( !specificReply ) {
+        console.log(`Error: specific reply not found`);
+      }
       if (delete_password == specificReply.delete_password) {
-        specificReply._id = "[deleted]"; // change reply_id to [deleted]
-        const answerThread = await specificThread.save();
-        console.log(`The whole answer thread looks like ${JSON.stringify(answerThread)}`);
-        return res.text("success");
+        specificReply.text = "[deleted]"; // change text of the specificReply to [deleted]
+        await specificThread.save();
+        console.log("success");
+        return res.status(200).send("success");
       } else {
-        return res.text("Incorrect password");
+        console.log("incorrect password");
+        return res.status(401).send("incorrect password");
       }
     }
     catch( err ) {
@@ -224,15 +280,17 @@ module.exports = function (app) {
     try {
       const specificThread = await Thread.findById(thread_id);
       // Also possible
-      // const specificReply = specificThread.replies.find(reply => reply._id.toString() === reply_id);
-      const specificReply = specificThread.findById(reply_id);
+      const specificReply = specificThread.replies.find(reply => reply._id.toString() === reply_id);
+      // const specificReply = specificThread.findById(reply_id);
       if (specificReply) {
         specificReply.reported = true; // change reported to true
         const answerThread = await specificThread.save();
         console.log(`The whole answer thread looks like ${JSON.stringify(answerThread)}`);
-        return res.text("reported");
+        console.log("reported")
+        return res.send("reported");
       } else {
-        return res.text("Reply not found");
+        console.log("Reply not found")
+        return res.send("Reply not found");
       }
     }
     catch( err ) {
